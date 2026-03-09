@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    container_name: earnia-api
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - ./storage:/var/www/html/storage
+      - ./bootstrap/cache:/var/www/html/bootstrap/cache
+    environment:
+      - APP_ENV=production
+    networks:
+      - earnia-network
+    depends_on:
+      - mysql
+      - redis
+
+  nginx:
+    image: nginx:alpine
+    container_name: earnia-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./:/var/www/html
+      - ./docker/nginx/production.conf:/etc/nginx/conf.d/default.conf
+      - ./docker/ssl:/etc/nginx/ssl
+    networks:
+      - earnia-network
+    depends_on:
+      - app
+
+  mysql:
+    image: mysql:8.0
+    container_name: earnia-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: earnia_production
+      MYSQL_USER: earnia_user
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "3306:3306"
+    networks:
+      - earnia-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: earnia-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - earnia-network
+
+  queue:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    container_name: earnia-queue
+    restart: unless-stopped
+    command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
+    working_dir: /var/www/html
+    volumes:
+      - ./:/var/www/html
+    environment:
+      - APP_ENV=production
+    networks:
+      - earnia-network
+    depends_on:
+      - mysql
+      - redis
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    container_name: earnia-scheduler
+    restart: unless-stopped
+    command: /bin/sh -c "while true; do php artisan schedule:run; sleep 60; done"
+    working_dir: /var/www/html
+    volumes:
+      - ./:/var/www/html
+    environment:
+      - APP_ENV=production
+    networks:
+      - earnia-network
+    depends_on:
+      - mysql
+      - redis
+
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  earnia-network:
+    driver: bridge
