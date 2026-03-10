@@ -1,44 +1,47 @@
 #!/bin/bash
-
-# Railway startup script for Laravel
+set -e  # Exit on error
 
 echo "🚀 Starting Earnia Backend on Railway..."
+echo "Environment: ${APP_ENV:-not set}"
+echo "PHP Version: $(php -v | head -n 1)"
+
+# Check critical environment variables
+if [ -z "$APP_KEY" ]; then
+    echo "❌ ERROR: APP_KEY is not set!"
+    exit 1
+fi
+
+if [ -z "$DB_HOST" ]; then
+    echo "❌ ERROR: DB_HOST is not set!"
+    exit 1
+fi
+
+echo "✅ Environment variables OK"
 
 # Set proper permissions
 echo "📁 Setting permissions..."
-chmod -R 775 storage bootstrap/cache
-chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true
+chmod -R 775 storage bootstrap/cache 2>/dev/null || true
 
-# Clear any cached config (important for Railway)
-echo "🧹 Clearing cached config..."
-php artisan config:clear
-php artisan cache:clear
-php artisan route:clear
-php artisan view:clear
+# Clear any cached config
+echo "🧹 Clearing cache..."
+php artisan config:clear || true
+php artisan cache:clear || true
 
 # Run migrations
-echo "🔄 Running database migrations..."
-php artisan migrate --force --no-interaction || {
-    echo "❌ Migration failed!"
-    exit 1
-}
+echo "🔄 Running migrations..."
+php artisan migrate --force --no-interaction
 
-# Seed database with games (only if games table is empty)
+# Seed games if needed
 echo "🎮 Checking games..."
-GAME_COUNT=$(php artisan tinker --execute="echo App\Models\Game::count();")
-if [ "$GAME_COUNT" -eq "0" ]; then
-    echo "🎮 Seeding games..."
-    php artisan db:seed --class=GameSeeder --force --no-interaction
-else
-    echo "✅ Games already seeded ($GAME_COUNT games found)"
+php artisan db:seed --class=GameSeeder --force --no-interaction || echo "⚠️ Seeding skipped (may already exist)"
+
+# Cache config for production
+if [ "$APP_ENV" = "production" ]; then
+    echo "⚙️ Caching config..."
+    php artisan config:cache
+    php artisan route:cache
 fi
 
-# Optimize for production
-echo "⚙️ Optimizing application..."
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
-
-# Start the server
-echo "✅ Starting web server on port ${PORT:-8000}..."
-php artisan serve --host=0.0.0.0 --port=${PORT:-8000}
+# Start server
+echo "✅ Starting server on port ${PORT:-8000}..."
+exec php artisan serve --host=0.0.0.0 --port=${PORT:-8000}
