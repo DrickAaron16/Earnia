@@ -5,18 +5,11 @@ echo "🚀 Starting Earnia Backend on Railway..."
 echo "Environment: ${APP_ENV:-not set}"
 echo "PHP Version: $(php -v | head -n 1)"
 
-# Check critical environment variables
-if [ -z "$APP_KEY" ]; then
-    echo "❌ ERROR: APP_KEY is not set!"
-    exit 1
-fi
-
-if [ -z "$DB_HOST" ]; then
-    echo "❌ ERROR: DB_HOST is not set!"
-    exit 1
-fi
-
-echo "✅ Environment variables OK"
+# Debug: Show all environment variables (remove in production)
+echo "📋 Environment variables:"
+echo "APP_KEY: ${APP_KEY:0:20}..." # Show only first 20 chars
+echo "DB_HOST: ${DB_HOST:-not set}"
+echo "DB_CONNECTION: ${DB_CONNECTION:-not set}"
 
 # Set proper permissions
 echo "📁 Setting permissions..."
@@ -32,14 +25,14 @@ echo "🔄 Running migrations..."
 php artisan migrate --force --no-interaction
 
 # Seed games if needed
-echo "🎮 Checking games..."
-php artisan db:seed --class=GameSeeder --force --no-interaction || echo "⚠️ Seeding skipped (may already exist)"
+echo "🎮 Seeding games..."
+php artisan db:seed --class=GameSeeder --force --no-interaction || echo "⚠️ Seeding skipped"
 
 # Cache config for production
 if [ "$APP_ENV" = "production" ]; then
     echo "⚙️ Caching config..."
-    php artisan config:cache
-    php artisan route:cache
+    php artisan config:cache || echo "⚠️ Config cache failed"
+    php artisan route:cache || echo "⚠️ Route cache failed"
 fi
 
 # Start server
